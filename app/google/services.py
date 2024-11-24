@@ -332,7 +332,7 @@ class GoogleRequestService:
         }
         last_response = await self._google_client.as_user(
             sheets_v4.spreadsheets.batchUpdate(
-                spreadsheetId=worksheet_id, json=request_data
+                spreadsheetId=sheet_id, json=request_data # worksheet_id에서 sheet_id로 수정
             ),
             user_creds=credential,
         )
