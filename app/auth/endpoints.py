@@ -116,12 +116,6 @@ class AuthEndpoint:
         ),
         auth_service: AuthService = Depends(Provide[AppContainers.auth.service]),
     ) -> APIResponse[UserLoginResponse]:
-        if data.state != google_service.get_server_state():
-            raise APIError(
-                status_code=400,
-                error_code=ErrorCode.INVALID_SERVER_STATE,
-                message="state 값이 일치하지 않습니다.",
-            )
         try:
             user_credential_data = await google_service.fetch_user_credentials(
                 data.code
