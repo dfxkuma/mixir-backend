@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
@@ -50,12 +51,24 @@ def bootstrap() -> FastAPI:
         logger.info("Motor Client connections closed")
         logger.info("Application shutdown complete")
 
+        
+    origins = [
+        "mixir-api.sunrin.kr",
+        "mixir.sunrin.kr",
+    ]
     app = FastAPI(
         title="Mixir Backend API",
         lifespan=lifespan,
         docs_url="/api/docs",
         redoc_url=None,
         debug=settings.APP_ENV == "development" or settings.APP_ENV == "testing",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     return app
 
