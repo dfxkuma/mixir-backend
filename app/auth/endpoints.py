@@ -20,6 +20,9 @@ from app.google.services import GoogleRequestService
 
 from app.user.entities import User
 from app.user.entities.user import GoogleCredential
+from app.logger import use_logger
+
+logger = use_logger("auth_endpoint")
 
 router = APIRouter(
     prefix="/auth",
@@ -121,6 +124,10 @@ class AuthEndpoint:
                 data.code
             )
         except aiogoogle.excs.HTTPError:
+            import traceback
+            logger.error(
+                f"Invalid google code: {data.code}, {traceback.format_exc()}",
+            )
             raise APIError(
                 status_code=400,
                 error_code=ErrorCode.INVALID_GOOGLE_CODE,
