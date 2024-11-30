@@ -1,4 +1,6 @@
 import aiogoogle.excs
+import traceback
+
 from dependency_injector.wiring import inject, Provide
 
 from fastapi import APIRouter, Depends
@@ -6,16 +8,14 @@ from fastapi_restful.cbv import cbv
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.application.authorization import get_current_user_id
 from app.application.error import ErrorCode
-from app.application.response import APIResponse, APIError, SuccessfulEntityResponse
+from app.application.response import APIResponse, APIError
+from app.application.utils import validate_email
 from app.auth.dto.auth import AuthVerifyDTO
-from app.auth.dto.email import EmailVerificationRequestDTO, EmailVerificationDTO
 from app.auth.schema.string import AuthorizationURLSchema
 from app.auth.schema.user import UserLoginResponse, UserLoginRequestType
 from app.auth.services import AuthService
 from app.containers import AppContainers
-from app.email.services import EmailService
 from app.google.services import GoogleRequestService
 
 from app.user.entities import User
@@ -54,58 +54,6 @@ class AuthEndpoint:
             data=AuthorizationURLSchema(url=authorization_url),
         )
 
-    @router.post("/email/requestCode", description="이메일 인증 코드를 요청합니다.")
-    @inject
-    async def request_email_verification_code(
-        self,
-        data: EmailVerificationRequestDTO,
-        email_service: EmailService = Depends(Provide[AppContainers.email.service]),
-        auth_service: AuthService = Depends(Provide[AppContainers.auth.service]),
-        user_id: str = Depends(get_current_user_id),
-    ) -> APIResponse[SuccessfulEntityResponse]:
-        user = await User.find_one({User.sen_email: data.email})
-        if user:
-            raise APIError(
-                status_code=400,
-                error_code=ErrorCode.ALREADY_VERIFIED,
-                message="이미 인증된 이메일입니다.",
-            )
-        success, code = await email_service.send_verify_email(data.email)
-        if not success:
-            raise APIError(
-                status_code=500,
-                error_code=ErrorCode.INTERNAL_SERVER_ERROR,
-                message="이메일 전송에 실패했습니다. 서버 오류입니다.",
-            )
-        entity_id = await auth_service.create_verification_code(
-            data.email, str(user_id), code
-        )
-        return APIResponse(
-            message="인증 코드를 성공적으로 발급했습니다.",
-            data=SuccessfulEntityResponse(entity_id=entity_id),
-        )
-
-    @router.post("/email/verify", description="이메일 인증 코드를 검증합니다.")
-    @inject
-    async def verify_email(
-        self,
-        data: EmailVerificationDTO,
-        auth_service: AuthService = Depends(Provide[AppContainers.auth.service]),
-    ) -> APIResponse[SuccessfulEntityResponse]:
-        is_verified = await auth_service.verify_code(data.session_id, data.code)
-        if not is_verified:
-            raise APIError(
-                status_code=400,
-                error_code=ErrorCode.INVALID_VERIFICATION_CODE,
-                message="인증 코드가 일치하지 않습니다.",
-            )
-
-        await auth_service.remove_verification_code(data.session_id)
-        return APIResponse(
-            message="이메일 인증에 성공했습니다.",
-            data=SuccessfulEntityResponse(entity_id=data.session_id),
-        )
-
     @router.post(
         "/login",
         description="구글 로그인 후 사용자 정보를 반환합니다. (안되어있으면 자동가입)",
@@ -124,7 +72,6 @@ class AuthEndpoint:
                 data.code
             )
         except aiogoogle.excs.HTTPError:
-            import traceback
             logger.error(
                 f"Invalid google code: {data.code}, {traceback.format_exc()}",
             )
@@ -135,6 +82,12 @@ class AuthEndpoint:
             )
         user_info = await google_service.fetch_user_info(user_credential_data)
         odm_user = await User.find({"email": user_info["email"]}).first_or_none()
+        if validate_email(user_info["email"]):
+            raise APIError(
+                status_code=403,
+                error_code=ErrorCode.ACCESS_DENIED,
+                message="이 리소스에 접근할 권한이 없습니다.",
+            )
         if not odm_user:
             odm_user = User(
                 email=user_info["email"],
@@ -145,7 +98,6 @@ class AuthEndpoint:
                     refresh_token=user_credential_data.get("refresh_token"),
                     access_token_expires_at=user_credential_data.get("expires_at"),
                 ),
-                sen_email=None,
             )
             await odm_user.create()
             access_token = await auth_service.create_access_token(str(odm_user.id))

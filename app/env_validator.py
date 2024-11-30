@@ -18,11 +18,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str
 
-    GMAIL_ADDRESS: str
-    GMAIL_PASSWORD: str
     SHEET_TEMPLATE_ID: str
-
-    ADMIN_EMAIL_HOST: str
 
     @staticmethod
     @field_validator("SERVER_PORT")

@@ -1,12 +1,9 @@
 import os
 
-from aiogoogle.models import Response
 from aiohttp import ClientSession
-from app.application.response import APIError
 from app.env_validator import get_settings
 from app.logger import use_logger
 
-import aiogoogle.excs
 from aiogoogle import Aiogoogle, auth as aiogoogle_auth
 from aiogoogle.auth.creds import UserCreds
 
@@ -287,27 +284,21 @@ class GoogleRequestService:
                             {
                                 "values": [
                                     {
-                                        "userEnteredValue": {
-                                            "stringValue": "번호"
-                                        },
+                                        "userEnteredValue": {"stringValue": "번호"},
                                         "userEnteredFormat": {
                                             "horizontalAlignment": "CENTER",
                                             "verticalAlignment": "MIDDLE",
                                         },
                                     },
                                     {
-                                        "userEnteredValue": {
-                                            "stringValue": "이름"
-                                        },
+                                        "userEnteredValue": {"stringValue": "이름"},
                                         "userEnteredFormat": {
                                             "horizontalAlignment": "CENTER",
                                             "verticalAlignment": "MIDDLE",
                                         },
                                     },
                                     {
-                                        "userEnteredValue": {
-                                            "stringValue": "성별"
-                                        },
+                                        "userEnteredValue": {"stringValue": "성별"},
                                         "userEnteredFormat": {
                                             "horizontalAlignment": "CENTER",
                                             "verticalAlignment": "MIDDLE",
@@ -332,7 +323,8 @@ class GoogleRequestService:
         }
         last_response = await self._google_client.as_user(
             sheets_v4.spreadsheets.batchUpdate(
-                spreadsheetId=sheet_id, json=request_data # worksheet_id에서 sheet_id로 수정
+                spreadsheetId=sheet_id,
+                json=request_data,  # worksheet_id에서 sheet_id로 수정
             ),
             user_creds=credential,
         )

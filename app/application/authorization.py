@@ -87,11 +87,6 @@ async def get_current_auth_user_entity(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication token",
             )
-        if not user.verified:
-            raise HTTPException(
-                status_code=status.HTTP_406_NOT_ACCEPTABLE,
-                detail="Token is not verified",
-            )
         return user
 
     except PyJWTError:
