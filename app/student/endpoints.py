@@ -98,7 +98,7 @@ class StudentEndpoint:
             credential=google_credential,
         )
         return APIResponse(
-            message="그룹 생성 완료",
+            message="파일 생성 완료",
             data=SuccessfulEntityResponse(entity_id=copy_response["id"]),
         )
 

@@ -101,7 +101,6 @@ class AuthEndpoint:
             )
             await odm_user.create()
             access_token = await auth_service.create_access_token(str(odm_user.id))
-
             user_credential = google_service.build_user_credentials(
                 odm_user.google_credential
             )

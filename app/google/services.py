@@ -92,7 +92,7 @@ class GoogleRequestService:
         drive_v3 = await self._google_client.discover("drive", "v3")
         response = await self._google_client.as_user(
             drive_v3.files.create(
-                body={"name": folder_name, "mimeType": GOOGLE_DRIVE_FOLDER_MIME_TYPE},
+                json={"name": folder_name, "mimeType": GOOGLE_DRIVE_FOLDER_MIME_TYPE},
                 fields="id",
             ),
             user_creds=credential,
