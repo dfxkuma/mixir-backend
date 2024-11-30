@@ -1,4 +1,4 @@
-FROM python:3.11.9-slim-bookworm AS builder
+FROM python:3.11.9-alpine3.20
 WORKDIR /code
 EXPOSE 80
 COPY . .
