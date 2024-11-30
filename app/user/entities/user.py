@@ -22,8 +22,6 @@ class User(Document):
     email: Indexed(str, unique=True) = Field(
         ..., description="사용자 이메일"
     )  # 이메일은 유니크해야 할 것 같아서 unique 인덱스 추가
-    sen_email: str | None = Field(None, description="교육청 이메일")
     picture: Indexed(str) = Field(..., description="사용자 프로필 사진")
     google_credential: GoogleCredential = Field(..., description="구글 OAuth2 정보")
-    verified: bool = Field(False, description="공직자 이메일 인증 여부")
     matches: list[Link[Match]] = Field([], description="매치 정보")

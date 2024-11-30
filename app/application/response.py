@@ -1,5 +1,4 @@
-from typing import Generic, TypeVar, Literal, Any
-from uuid import UUID
+from typing import Generic, TypeVar, Any
 
 from fastapi import HTTPException
 from pydantic import Field, BaseModel

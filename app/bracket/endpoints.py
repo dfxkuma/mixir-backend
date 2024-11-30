@@ -6,19 +6,12 @@ from fastapi import APIRouter, Depends
 from fastapi_restful.cbv import cbv
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy.sql.sqltypes import MatchType
 
 from app.application.authorization import (
-    get_current_user_id,
     get_current_auth_user_entity,
 )
 from app.application.error import ErrorCode
-from app.application.response import APIResponse, APIError, SuccessfulEntityResponse
-from app.auth.dto.auth import AuthVerifyDTO
-from app.auth.dto.email import EmailVerificationRequestDTO, EmailVerificationDTO
-from app.auth.schema.string import AuthorizationURLSchema
-from app.auth.schema.user import UserLoginResponse, UserLoginRequestType
-from app.auth.services import AuthService
+from app.application.response import APIResponse, APIError
 from app.bracket.dto.match import MatchTypeDTO
 from app.bracket.schema.match import (
     BracketMatchListSchema,
@@ -27,13 +20,11 @@ from app.bracket.schema.match import (
 )
 from app.bracket.services import BracketService
 from app.containers import AppContainers
-from app.email.services import EmailService
 from app.google.services import GoogleRequestService
 from app.student.schema.group import StudentSchema
 
 from app.user.entities import User
 from app.bracket.entities import Match
-from app.user.entities.user import GoogleCredential
 
 router = APIRouter(
     prefix="/bracket",

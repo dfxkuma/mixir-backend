@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,7 +50,6 @@ def bootstrap() -> FastAPI:
         logger.info("Motor Client connections closed")
         logger.info("Application shutdown complete")
 
-        
     origins = [
         "mixir-api.sunrin.kr",
         "mixir.sunrin.kr",
