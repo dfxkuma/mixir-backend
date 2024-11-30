@@ -152,6 +152,28 @@ class GoogleRequestService:
                 )
             raise e
 
+    async def edit_drive_sheet_name(
+        self, sheet_id: str, new_name: str, credential: UserCreds
+    ) -> dict:
+        sheets_v4 = await self._google_client.discover("sheets", "v4")
+        request_data = {
+            "requests": [
+                {
+                    "updateSpreadsheetProperties": {
+                        "properties": {"title": new_name},
+                        "fields": "title",
+                    }
+                }
+            ]
+        }
+        response = await self._google_client.as_user(
+            sheets_v4.spreadsheets.batchUpdate(
+                spreadsheetId=sheet_id, json=request_data
+            ),
+            user_creds=credential,
+        )
+        return response
+
     async def fetch_spreadsheets_by_id(
         self, sheet_id: str, credential: UserCreds
     ) -> list[dict]:

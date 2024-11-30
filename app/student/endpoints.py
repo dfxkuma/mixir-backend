@@ -138,6 +138,38 @@ class StudentEndpoint:
                 message="스프레드시트 ID가 올바르지 않습니다.",
             )
 
+    @router.post("/{sheet_id}/edit", description="팀 정보 수정하기")
+    async def edit_file_info(
+        self,
+        sheet_id: str,
+        name: str = Body(description="팀 이름", embed=True),
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        try:
+            google_credential = google_service.build_user_credentials(
+                user.google_credential
+            )
+            response = await google_service.edit_drive_sheet_name(
+                sheet_id, name, credential=google_credential
+            )
+            logger.debug(f"edit_file_info response[id={sheet_id}]", response)
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[EDIT_FILE_INFO Error] user.id={user.id}", traceback.format_exc()
+            )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
+        return APIResponse(
+            message="파일 수정 완료",
+            data=SuccessfulEntityResponse(entity_id=sheet_id),
+        )
+
     @router.post("/{sheet_id}/groups", description="하위 그룹 만들기")
     @inject
     async def create_group(
