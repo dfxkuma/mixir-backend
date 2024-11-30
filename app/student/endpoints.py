@@ -128,6 +128,7 @@ class StudentEndpoint:
                             name=group_data["properties"]["title"],
                         )
                         for group_data in spreadsheet_list["sheets"]
+                        if not group_data["properties"]["title"] == "Mixir 팀빌딩"
                     ]
                 ),
             )
