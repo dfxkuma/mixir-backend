@@ -352,3 +352,96 @@ class GoogleRequestService:
         )
 
         return last_response
+    
+    async def delete_group_sheet(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        credential: dict,
+    ) -> dict:
+        """Delete a sheet from the spreadsheet"""
+        sheets_api = await self.build_sheets_api(credential)
+        
+        # First get the sheet ID
+        spreadsheet = await self.fetch_spreadsheets_by_id(spreadsheet_id, credential)
+        sheet_id = None
+        for sheet in spreadsheet["sheets"]:
+            if sheet["properties"]["title"] == sheet_name:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+                
+        if sheet_id is None:
+            raise APIError(
+                status_code=404,
+                error_code=ErrorCode.SHEET_NOT_FOUND,
+                message="해당 시트를 찾을 수 없습니다.",
+            )
+        
+        request_body = {
+            "requests": [
+                {
+                    "deleteSheet": {
+                        "sheetId": sheet_id
+                    }
+                }
+            ]
+        }
+        
+        response = await sheets_api.spreadsheets.batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            json=request_body
+        )
+        return response
+    
+    async def delete_student(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        row_index: int,
+        credential: dict,
+    ) -> dict:
+        """Delete a student row from the sheet"""
+        sheets_api = await self.build_sheets_api(credential)
+        
+        request_body = {
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": await self._get_sheet_id(spreadsheet_id, sheet_name, credential),
+                            "dimension": "ROWS",
+                            "startIndex": row_index,
+                            "endIndex": row_index + 1
+                        }
+                    }
+                }
+            ]
+        }
+        
+        response = await sheets_api.spreadsheets.batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            json=request_body
+        )
+        return response
+
+    
+    async def delete_spreadsheet(
+        self,
+        spreadsheet_id: str,
+        credential: dict,
+    ) -> None:
+        """스프레드시트(그룹) 삭제"""
+        drive_api = await self.build_drive_api(credential)
+        
+        try:
+            await drive_api.files.delete(
+                fileId=spreadsheet_id,
+            )
+        except aiogoogle.excs.HTTPError as e:
+            if e.res.status_code == 404:
+                raise APIError(
+                    status_code=404,
+                    error_code=ErrorCode.SPREADSHEET_NOT_FOUND,
+                    message="스프레드시트를 찾을 수 없습니다.",
+                )
+            raise e
