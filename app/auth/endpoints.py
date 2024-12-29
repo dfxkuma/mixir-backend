@@ -82,12 +82,12 @@ class AuthEndpoint:
             )
         user_info = await google_service.fetch_user_info(user_credential_data)
         odm_user = await User.find({"email": user_info["email"]}).first_or_none()
-        if validate_email(user_info["email"]):
-            raise APIError(
-                status_code=403,
-                error_code=ErrorCode.ACCESS_DENIED,
-                message="이 리소스에 접근할 권한이 없습니다.",
-            )
+        # if validate_email(user_info["email"]):
+        #     raise APIError(
+        #         status_code=403,
+        #         error_code=ErrorCode.ACCESS_DENIED,
+        #         message="이 리소스에 접근할 권한이 없습니다.",
+        #     )
         if not odm_user:
             odm_user = User(
                 email=user_info["email"],

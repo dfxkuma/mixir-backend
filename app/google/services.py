@@ -352,3 +352,107 @@ class GoogleRequestService:
         )
 
         return last_response
+
+    async def delete_drive_file(
+        self,
+        file_id: str,
+        credential: UserCreds,
+    ) -> None:
+        """Delete a file from Google Drive"""
+        drive_v3 = await self._google_client.discover("drive", "v3")
+        await self._google_client.as_user(
+            drive_v3.files.delete(fileId=file_id),
+            user_creds=credential,
+        )
+
+    async def delete_sheet(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        credential: UserCreds,
+    ) -> dict:
+        """Delete a specific sheet from a spreadsheet"""
+        sheets_v4 = await self._google_client.discover("sheets", "v4")
+        
+        # First get the sheet ID
+        response = await self.fetch_spreadsheets_by_id(spreadsheet_id, credential)
+        sheet_id = None
+        for sheet in response["sheets"]:
+            if sheet["properties"]["title"] == sheet_name:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+        
+        if sheet_id is None:
+            raise APIError(
+                status_code=404,
+                error_code=ErrorCode.SHEET_NOT_FOUND,
+                message="해당 시트를 찾을 수 없습니다.",
+            )
+            
+        request_data = {
+            "requests": [
+                {
+                    "deleteSheet": {
+                        "sheetId": sheet_id
+                    }
+                }
+            ]
+        }
+        
+        response = await self._google_client.as_user(
+            sheets_v4.spreadsheets.batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                json=request_data,
+            ),
+            user_creds=credential,
+        )
+        return response
+
+    async def delete_student(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        row_index: int,
+        credential: UserCreds,
+    ) -> dict:
+        """Delete a student row from a sheet"""
+        sheets_v4 = await self._google_client.discover("sheets", "v4")
+        
+        # Get sheet ID first
+        response = await self.fetch_spreadsheets_by_id(spreadsheet_id, credential)
+        sheet_id = None
+        for sheet in response["sheets"]:
+            if sheet["properties"]["title"] == sheet_name:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+        
+        if sheet_id is None:
+            raise APIError(
+                status_code=404,
+                error_code=ErrorCode.SHEET_NOT_FOUND,
+                message="해당 시트를 찾을 수 없습니다.",
+            )
+        
+        request_data = {
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "ROWS",
+                            "startIndex": row_index,
+                            "endIndex": row_index + 1
+                        }
+                    }
+                }
+            ]
+        }
+        
+        response = await self._google_client.as_user(
+            sheets_v4.spreadsheets.batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                json=request_data,
+            ),
+            user_creds=credential,
+        )
+        return response

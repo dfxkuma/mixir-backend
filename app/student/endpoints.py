@@ -101,6 +101,37 @@ class StudentEndpoint:
             message="파일 생성 완료",
             data=SuccessfulEntityResponse(entity_id=copy_response["id"]),
         )
+        
+    @router.delete("/{sheet_id}", description="그룹 (파일) 삭제")
+    @inject
+    async def delete_group(
+        self,
+        sheet_id: str,
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            await google_service.delete_drive_file(
+                sheet_id, credential=google_credential
+            )
+            return APIResponse(
+                message="파일 삭제 완료",
+                data=SuccessfulEntityResponse(entity_id=sheet_id),
+            )
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[DELETE_GROUP Error] user.id={user.id}", traceback.format_exc()
+            )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
 
     @router.get("/{sheet_id}/groups", description="그룹 정보 조회")
     @inject
@@ -193,6 +224,38 @@ class StudentEndpoint:
             data=SuccessfulEntityResponse(entity_id=response["spreadsheetId"]),
         )
 
+    @router.delete("/{sheet_id}/groups/{group_name}", description="하위 그룹 삭제")
+    @inject
+    async def delete_subgroup(
+        self,
+        sheet_id: str,
+        group_name: str,
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            await google_service.delete_sheet(
+                sheet_id, group_name, credential=google_credential
+            )
+            return APIResponse(
+                message="그룹 삭제 완료",
+                data=SuccessfulEntityResponse(entity_id=sheet_id),
+            )
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[DELETE_SUBGROUP Error] user.id={user.id}", traceback.format_exc()
+            )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
+    
     @router.get("/{sheet_id}/{group_name}/members", description="그룹 멤버 조회")
     @inject
     async def get_group_members(
@@ -273,6 +336,62 @@ class StudentEndpoint:
             )
         except aiogoogle.excs.HTTPError:
             logger.error(traceback.format_exc())
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
+
+    @router.delete("/{sheet_id}/{group_name}/members/{student_id}", description="그룹 멤버 삭제")
+    @inject
+    async def delete_group_member(
+        self,
+        sheet_id: str,
+        group_name: str,
+        student_id: str,
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            # First fetch the current data to find the row index
+            spreadsheet_data = await google_service.fetch_spreadsheet_data(
+                sheet_id, group_name, credential=google_credential
+            )
+            
+            # Find the row index for the student_id
+            student_row_index = None
+            for i, row in enumerate(spreadsheet_data["values"][1:], start=1):
+                if row[0] == student_id:
+                    student_row_index = i
+                    break
+                    
+            if student_row_index is None:
+                raise APIError(
+                    status_code=404,
+                    error_code=ErrorCode.STUDENT_NOT_FOUND,
+                    message="해당 학생을 찾을 수 없습니다.",
+                )
+
+            await google_service.delete_student(
+                sheet_id,
+                group_name,
+                student_row_index,
+                credential=google_credential
+            )
+            
+            return APIResponse(
+                message="멤버 삭제 완료",
+                data=SuccessfulEntityResponse(entity_id=student_id),
+            )
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[DELETE_MEMBER Error] user.id={user.id}", traceback.format_exc()
+            )
             raise APIError(
                 status_code=400,
                 error_code=ErrorCode.INVALID_SPREADSHEET_ID,
