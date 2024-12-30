@@ -192,14 +192,59 @@ class GoogleRequestService:
         tab_name: str,
         credential: UserCreds,
     ) -> dict:
+        """
+        Fetch data from a specific sheet tab
+        Handles sheet names with special characters including Korean
+        """
         sheets_v4 = await self._google_client.discover("sheets", "v4")
-        response = await self._google_client.as_user(
-            sheets_v4.spreadsheets.values.get(
-                spreadsheetId=sheet_id, range=f"'{tab_name}'", majorDimension="ROWS"
-            ),
-            user_creds=credential,
-        )
-        return response
+        try:
+            # Use sheet name without quotes, the API will handle escaping
+            range_name = tab_name
+            response = await self._google_client.as_user(
+                sheets_v4.spreadsheets.values.get(
+                    spreadsheetId=sheet_id,
+                    range=range_name,  # Remove the quotes around tab_name
+                    majorDimension="ROWS"
+                ),
+                user_creds=credential,
+            )
+            return response
+        except aiogoogle.excs.HTTPError as e:
+            logger.error(f"Error fetching spreadsheet data: {str(e)}")
+            # If the direct approach fails, try with the sheet ID instead
+            try:
+                # Get the sheet ID for the given name
+                spreadsheet_info = await self.fetch_spreadsheets_by_id(sheet_id, credential)
+                sheet_id = None
+                for sheet in spreadsheet_info["sheets"]:
+                    if sheet["properties"]["title"] == tab_name:
+                        sheet_id = sheet["properties"]["sheetId"]
+                        break
+                
+                if sheet_id is None:
+                    raise APIError(
+                        status_code=404,
+                        error_code=ErrorCode.SHEET_NOT_FOUND,
+                        message="해당 시트를 찾을 수 없습니다.",
+                    )
+                
+                # Use A1 notation with sheet ID
+                response = await self._google_client.as_user(
+                    sheets_v4.spreadsheets.values.get(
+                        spreadsheetId=sheet_id,
+                        range=f"'{tab_name}'!A1:Z1000",  # Use a wide range to get all data
+                        majorDimension="ROWS"
+                    ),
+                    user_creds=credential,
+                )
+                return response
+            except aiogoogle.excs.HTTPError as e:
+                logger.error(f"Error fetching spreadsheet data with sheet ID: {str(e)}")
+                raise APIError(
+                    status_code=400,
+                    error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                    message="스프레드시트 데이터를 가져올 수 없습니다.",
+                )
 
     async def add_student(
         self,
@@ -456,3 +501,241 @@ class GoogleRequestService:
             user_creds=credential,
         )
         return response
+    
+    async def update_student(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        row_index: int,
+        student_data: StudentSchema,
+        credential: UserCreds,
+    ) -> dict:
+        """
+        Update a student's information in a specific sheet
+        
+        Args:
+            spreadsheet_id (str): The ID of the spreadsheet
+            sheet_name (str): Name of the sheet containing student data
+            row_index (int): The row index of the student to update
+            student_data (StudentSchema): Updated student information
+            credential (UserCreds): Google API credentials
+        
+        Returns:
+            dict: Response from the Google Sheets API
+        """
+        sheets_v4 = await self._google_client.discover("sheets", "v4")
+        
+        # Get sheet ID first
+        response = await self.fetch_spreadsheets_by_id(spreadsheet_id, credential)
+        sheet_id = None
+        for sheet in response["sheets"]:
+            if sheet["properties"]["title"] == sheet_name:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+        
+        if sheet_id is None:
+            raise APIError(
+                status_code=404,
+                error_code=ErrorCode.SHEET_NOT_FOUND,
+                message="해당 시트를 찾을 수 없습니다.",
+            )
+        
+        # Prepare the cell data with formatting
+        request_data = {
+            "requests": [
+                {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": row_index,
+                            "endRowIndex": row_index + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 4
+                        },
+                        "rows": [
+                            {
+                                "values": [
+                                    {
+                                        "userEnteredValue": {
+                                            "stringValue": str(student_data.student_id)
+                                        },
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "CENTER",
+                                            "verticalAlignment": "MIDDLE",
+                                        },
+                                    },
+                                    {
+                                        "userEnteredValue": {
+                                            "stringValue": student_data.name
+                                        },
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "CENTER",
+                                            "verticalAlignment": "MIDDLE",
+                                        },
+                                    },
+                                    {
+                                        "userEnteredValue": {
+                                            "stringValue": {
+                                                "male": "남",
+                                                "female": "여",
+                                            }[student_data.gender]
+                                        },
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "CENTER",
+                                            "verticalAlignment": "MIDDLE",
+                                        },
+                                    },
+                                    {
+                                        "userEnteredValue": {
+                                            "stringValue": student_data.level or ""
+                                        },
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "CENTER",
+                                            "verticalAlignment": "MIDDLE",
+                                        },
+                                    },
+                                ]
+                            }
+                        ],
+                        "fields": "userEnteredValue,userEnteredFormat(horizontalAlignment,verticalAlignment)",
+                    }
+                }
+            ]
+        }
+        
+        try:
+            response = await self._google_client.as_user(
+                sheets_v4.spreadsheets.batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    json=request_data,
+                ),
+                user_creds=credential,
+            )
+            return response
+        except aiogoogle.excs.HTTPError as e:
+            logger.error(f"Error updating student data: {str(e)}")
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 데이터를 수정할 수 없습니다.",
+            )
+            
+    async def rename_sheet(
+        self,
+        spreadsheet_id: str,
+        current_sheet_name: str,
+        new_sheet_name: str,
+        credential: UserCreds,
+    ) -> dict:
+        """
+        Rename a specific sheet in a spreadsheet
+        
+        Args:
+            spreadsheet_id (str): The ID of the spreadsheet
+            current_sheet_name (str): Current name of the sheet to rename
+            new_sheet_name (str): New name for the sheet
+            credential (UserCreds): Google API credentials
+        
+        Returns:
+            dict: Response from the Google Sheets API
+        """
+        sheets_v4 = await self._google_client.discover("sheets", "v4")
+        
+        # First get the sheet ID
+        response = await self.fetch_spreadsheets_by_id(spreadsheet_id, credential)
+        sheet_id = None
+        for sheet in response["sheets"]:
+            if sheet["properties"]["title"] == current_sheet_name:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+        
+        if sheet_id is None:
+            raise APIError(
+                status_code=404,
+                error_code=ErrorCode.SHEET_NOT_FOUND,
+                message="해당 시트를 찾을 수 없습니다.",
+            )
+        
+        # Check if new name already exists
+        for sheet in response["sheets"]:
+            if sheet["properties"]["title"] == new_sheet_name:
+                raise APIError(
+                    status_code=400,
+                    error_code=ErrorCode.SHEET_NAME_EXISTS,
+                    message="동일한 이름의 시트가 이미 존재합니다.",
+                )
+                
+        request_data = {
+            "requests": [
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": sheet_id,
+                            "title": new_sheet_name
+                        },
+                        "fields": "title"
+                    }
+                }
+            ]
+        }
+        
+        try:
+            response = await self._google_client.as_user(
+                sheets_v4.spreadsheets.batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    json=request_data,
+                ),
+                user_creds=credential,
+            )
+            return response
+        except aiogoogle.excs.HTTPError as e:
+            logger.error(f"Error renaming sheet: {str(e)}")
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="시트 이름을 변경할 수 없습니다.",
+            )
+            
+    async def share_spreadsheet(
+        self,
+        spreadsheet_id: str,
+        email: str,
+        credential: UserCreds,
+    ) -> dict:
+        """
+        Share a spreadsheet with a specific Gmail user as an editor
+        
+        Args:
+            spreadsheet_id (str): The ID of the spreadsheet
+            email (str): Gmail address to share with
+            credential (UserCreds): Google API credentials
+        
+        Returns:
+            dict: Response from the Google Drive API
+        """
+        drive_v3 = await self._google_client.discover("drive", "v3")
+        
+        # Prepare the permission data
+        permission_data = {
+            "type": "user",
+            "role": "writer",
+            "emailAddress": email,
+            # Optional notification settings
+            "sendNotificationEmail": True,
+            "emailMessage": "Mixir 팀빌딩 스프레드시트가 공유되었습니다."
+        }
+        
+        try:
+            response = await self._google_client.as_user(
+                drive_v3.permissions.create(
+                    fileId=spreadsheet_id,
+                    json=permission_data,
+                    fields="id",
+                    supportsAllDrives=True
+                ),
+                user_creds=credential,
+            )
+            return response
+        except aiogoogle.excs.HTTPError as e:
+            logger.error(f"Error sharing spreadsheet: {str(e)}")
+            raise e

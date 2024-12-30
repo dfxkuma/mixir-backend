@@ -397,3 +397,184 @@ class StudentEndpoint:
                 error_code=ErrorCode.INVALID_SPREADSHEET_ID,
                 message="스프레드시트 ID가 올바르지 않습니다.",
             )
+        
+    @router.put("/{sheet_id}/{group_name}/members/{student_id}", description="그룹 멤버 수정")
+    @inject
+    async def edit_group_member(
+        self,
+        sheet_id: str,
+        group_name: str,
+        student_id: str,
+        data: AddStudentDTO,
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            # First fetch the current data to find the row index
+            spreadsheet_data = await google_service.fetch_spreadsheet_data(
+                sheet_id, group_name, credential=google_credential
+            )
+            
+            # Find the row index for the student_id
+            student_row_index = None
+            for i, row in enumerate(spreadsheet_data["values"][1:], start=1):
+                if row[0] == student_id:
+                    student_row_index = i
+                    break
+                    
+            if student_row_index is None:
+                raise APIError(
+                    status_code=404,
+                    error_code=ErrorCode.STUDENT_NOT_FOUND,
+                    message="해당 학생을 찾을 수 없습니다.",
+                )
+
+            # Update student data
+            student = StudentSchema(
+                student_id=student_id,
+                name=data.name,
+                gender=data.gender,
+                level=data.level,
+            )
+            
+            # Call Google service to update the student
+            response = await google_service.update_student(
+                sheet_id,
+                group_name,
+                student_row_index,
+                student,
+                credential=google_credential
+            )
+            
+            return APIResponse(
+                message="멤버 수정 완료",
+                data=SuccessfulEntityResponse(entity_id=student_id),
+            )
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[EDIT_MEMBER Error] user.id={user.id}", traceback.format_exc()
+            )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
+            
+    @router.put("/{sheet_id}/groups/{group_name}", description="하위 그룹 이름 수정")
+    @inject
+    async def rename_subgroup(
+        self,
+        sheet_id: str,
+        group_name: str,
+        new_name: str = Body(description="새 그룹 이름 (시트명)", embed=True),
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            await google_service.rename_sheet(
+                sheet_id,
+                group_name,
+                new_name,
+                credential=google_credential
+            )
+            return APIResponse(
+                message="그룹 이름 수정 완료",
+                data=SuccessfulEntityResponse(entity_id=sheet_id),
+            )
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[RENAME_SUBGROUP Error] user.id={user.id}", traceback.format_exc()
+            )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
+            
+    @router.put("/{sheet_id}", description="그룹 (파일) 이름 수정")
+    @inject
+    async def rename_group(
+        self,
+        sheet_id: str,
+        new_name: str = Body(description="새 그룹 이름 (파일명)", embed=True),
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            # Format the name to maintain consistency with the file naming convention
+            formatted_name = f"[Mixir 팀빌딩] {new_name}"
+            
+            await google_service.edit_drive_sheet_name(
+                sheet_id,
+                formatted_name,
+                credential=google_credential
+            )
+            return APIResponse(
+                message="그룹 이름 수정 완료",
+                data=SuccessfulEntityResponse(entity_id=sheet_id),
+            )
+        except aiogoogle.excs.HTTPError:
+            logger.error(
+                f"[RENAME_GROUP Error] user.id={user.id}", traceback.format_exc()
+            )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트 ID가 올바르지 않습니다.",
+            )
+            
+    @router.post("/{sheet_id}/share", description="스프레드시트 공유하기")
+    @inject
+    async def share_spreadsheet(
+        self,
+        sheet_id: str,
+        email: str = Body(description="공유할 Gmail 주소", embed=True),
+        user: User = Depends(get_current_auth_user_entity),
+        google_service: GoogleRequestService = Depends(
+            Provide[AppContainers.google.service]
+        ),
+    ) -> APIResponse[SuccessfulEntityResponse]:
+        google_credential = google_service.build_user_credentials(
+            user.google_credential
+        )
+        try:
+            await google_service.share_spreadsheet(
+                sheet_id,
+                email,
+                credential=google_credential
+            )
+            return APIResponse(
+                message="스프레드시트 공유 완료",
+                data=SuccessfulEntityResponse(entity_id=sheet_id),
+            )
+        except aiogoogle.excs.HTTPError as e:
+            logger.error(
+                f"[SHARE_SPREADSHEET Error] user.id={user.id}", traceback.format_exc()
+            )
+            # Check if it's an invalid email error
+            if "invalidSharingRequest" in str(e):
+                raise APIError(
+                    status_code=400,
+                    error_code=ErrorCode.INVALID_EMAIL,
+                    message="유효하지 않은 이메일 주소입니다.",
+                )
+            raise APIError(
+                status_code=400,
+                error_code=ErrorCode.INVALID_SPREADSHEET_ID,
+                message="스프레드시트를 공유할 수 없습니다.",
+            )
